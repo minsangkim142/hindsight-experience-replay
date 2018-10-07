@@ -36,6 +36,7 @@ class Env():
         self.target = np.random.randint(2, size = size)
 
 # Experience replay buffer
+# Stores [[state, goal], action, reward, [new_state, goal]]
 class Buffer():
     def __init__(self, buffer_size = 50000):
         self.buffer = []
@@ -151,6 +152,8 @@ def main():
                         env.reset()
                         episode_experience = []
                         episode_succeeded = False
+                        
+                        # Use current policy and store everything into the experience buffer
                         for t in range(size):
                             s = np.copy(env.state)
                             g = np.copy(env.target)
@@ -169,24 +172,32 @@ def main():
                                     episode_succeeded = True
                                     succeed += 1
                         successes.append(episode_succeeded)
+                        
+                        # Add all generated experiences into the replay buffer
                         for t in range(size):
                             s, a, r, s_n, g = episode_experience[t]
                             inputs = np.concatenate([s,g],axis = -1)
                             new_inputs = np.concatenate([s_n,g],axis = -1)
                             buff.add(np.reshape(np.array([inputs,a,r,new_inputs]),[1,4]))
+                            
                             if HER:
+                                # Sample K goals and combine them with the current state, action and state_next
+                                # to add new experiences in the replay buffer
                                 for k in range(K):
                                     future = np.random.randint(t, size)
                                     _, _, _, g_n, _ = episode_experience[future]
                                     inputs = np.concatenate([s,g_n],axis = -1)
                                     new_inputs = np.concatenate([s_n, g_n],axis = -1)
                                     final = np.sum(np.array(s_n) == np.array(g_n)) == size
+                                    
+                                    # Compute the new reward with respect to the sampled goal
                                     if shaped_reward:
                                         r_n = 0 if final else -np.sum(np.square(np.array(s_n) == np.array(g_n)))
                                     else:
                                         r_n = 0 if final else -1
                                     buff.add(np.reshape(np.array([inputs,a,r_n,new_inputs]),[1,4]))
 
+                    # Train the network from the experience buffer
                     mean_loss = []
                     for k in range(optimisation_steps):
                         experience = buff.sample(batch_size)
@@ -221,6 +232,7 @@ def main():
                 saver.save(sess, os.path.join(model_dir, "model.ckpt"))
         print("Number of episodes succeeded: {}".format(succeed))
         raw_input("Press enter...")
+        
     with tf.Session() as sess:
         saver = tf.train.Saver()
         saver.restore(sess, os.path.join(model_dir, "model.ckpt"))
